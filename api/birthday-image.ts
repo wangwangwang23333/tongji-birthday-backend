@@ -61,22 +61,6 @@ ${birthdayMarkdown}
 - 简洁、具体，有场景 + 角色 + 氛围 + 画风
 - 只输出这一段描述，不要任何解释性句子或多余文本。`;
 
-    const textCompletion = await openai.chat.completions.create({
-      model: "qwen3-max",
-      messages: [
-        {
-          role: "system",
-          content:
-            "你是专业插画师助理，只负责把中文需求转换成简洁的图像描述 prompt。不要多说话。",
-        },
-        { role: "user", content: textPrompt },
-      ],
-      temperature: 0.7,
-    });
-
-    const imagePrompt =
-      textCompletion.choices[0]?.message?.content?.trim() ||
-      "Birthday party of a Chinese CS student at Tongji University Jiading campus, warm anime illustration.";
 
     // 2. 用图像模型生成图片
     const dashscopeRes = await fetch(DASHSCOPE_IMAGE_ENDPOINT, {
@@ -91,7 +75,7 @@ ${birthdayMarkdown}
           messages: [
             {
               role: "user",
-              content: [{ text: imagePrompt }],
+              content: [{ text: textPrompt }],
             },
           ],
         },
