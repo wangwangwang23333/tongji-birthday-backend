@@ -3,14 +3,29 @@ import type { VercelRequest, VercelResponse } from "@vercel/node";
 import OpenAI from "openai";
 
 const openai = new OpenAI({
-  apiKey: 'sk-73f2f2064dc44d89b4c1e3d646b40571',
-  // 国内用这个，海外可以换成 intl 版
+  apiKey: process.env.DASHSCOPE_API_KEY || process.env.API_KEY,
   baseURL:
+    process.env.QWEN_BASE_URL ||
     "https://dashscope.aliyuncs.com/compatible-mode/v1",
 });
 
-// 简单版：单次调用，不写复杂重试，先跑通
 export default async function handler(req: VercelRequest, res: VercelResponse) {
+  // === CORS 处理：所有请求一上来就先加头 ===
+  // 开发期可以用 *，生产环境建议改成你的前端域名
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "POST,OPTIONS");
+  res.setHeader(
+    "Access-Control-Allow-Headers",
+    "Content-Type, Authorization"
+  );
+
+  // 预检请求，直接 200 返回即可
+  if (req.method === "OPTIONS") {
+    res.status(200).end();
+    return;
+  }
+
+  // 只允许 POST
   if (req.method !== "POST") {
     res.status(405).json({ error: "Method not allowed" });
     return;
@@ -24,7 +39,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return;
     }
 
-    // 1. 用 qwen3-max 把你的生日结局 Markdown 转成适合画图的 prompt
+    // 1. 用 qwen3-max 生成图像 prompt
     const textPrompt = `
 你是一名插画师，需要为同济大学校园模拟游戏《梁乔的学期》绘制一张“生日结局”的插画。
 
@@ -61,9 +76,9 @@ ${birthdayMarkdown}
       textCompletion.choices[0]?.message?.content?.trim() ||
       "Birthday party of a Chinese CS student at Tongji University Jiading campus, warm anime illustration.";
 
-    // 2. 用 Qwen 的图像模型生图（模型名按你实际在百炼的名字改）
+    // 2. 用图像模型生成图片
     const imageResp = await openai.images.generate({
-      model: "qwen-vl-plus", // 或者你自己的图像模型 ID
+      model: process.env.QWEN_IMAGE_MODEL || "qwen-vl-plus", // 按你在百炼里的模型名改
       prompt: imagePrompt,
       n: 1,
       size: "1024x1024",
