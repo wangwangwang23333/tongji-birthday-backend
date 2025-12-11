@@ -8,6 +8,9 @@ const openai = new OpenAI({
     "https://dashscope.aliyuncs.com/compatible-mode/v1",
 });
 
+const DASHSCOPE_IMAGE_ENDPOINT = 'https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation';
+const apiKey = 'sk-73f2f2064dc44d89b4c1e3d646b40571';
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   // === CORS 处理：所有请求一上来就先加头 ===
   // 开发期可以用 *，生产环境建议改成你的前端域名
@@ -76,24 +79,56 @@ ${birthdayMarkdown}
       "Birthday party of a Chinese CS student at Tongji University Jiading campus, warm anime illustration.";
 
     // 2. 用图像模型生成图片
-    const imageResp = await openai.images.generate({
-      model: process.env.QWEN_IMAGE_MODEL || "qwen-vl-plus", // 按你在百炼里的模型名改
-      prompt: imagePrompt,
-      n: 1,
-      size: "1024x1024",
-      response_format: "url",
+    const dashscopeRes = await fetch(DASHSCOPE_IMAGE_ENDPOINT, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: "qwen-image-plus", // 或 "qwen-image"，文档里推荐 plus :contentReference[oaicite:1]{index=1}
+        input: {
+          messages: [
+            {
+              role: "user",
+              content: [{ text: imagePrompt }],
+            },
+          ],
+        },
+        parameters: {
+          size: "1328*1328", // 官方默认尺寸之一
+          prompt_extend: true,
+          watermark: false,
+        },
+      }),
     });
 
-    const url = imageResp.data?.[0]?.url;
-    if (!url) {
-      res.status(500).json({ error: "No image URL returned from Qwen image" });
-      return;
+    if (!dashscopeRes.ok) {
+      const text = await dashscopeRes.text().catch(() => "");
+      return res.status(500).json({
+        error: "DashScope image API error",
+        status: dashscopeRes.status,
+        body: text,
+      });
     }
 
-    res.status(200).json({
-      imageUrl: url,
-      prompt: imagePrompt,
-    });
+    const data = await dashscopeRes.json();
+
+    // 按官方响应结构取出图片 URL :contentReference[oaicite:2]{index=2}
+    const imageUrl =
+      data?.output?.choices?.[0]?.message?.content?.[0]?.image;
+
+    if (!imageUrl) {
+      return res.status(500).json({
+        error: "No image URL in DashScope response",
+        raw: data,
+      });
+    }
+
+    // 直接把可访问的 URL 返回前端，用 <img src={imageUrl}> 即可
+    return res.status(200).json({ imageUrl });
+
+    
   } catch (e: any) {
     console.error("Error in /api/birthday-image:", e);
     res.status(500).json({ error: e.message || "Internal Server Error" });
